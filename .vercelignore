@@ -1,0 +1,12 @@
+# Keep private notes and drafts off Vercel (same as .gitignore)
+BRIEF.md
+HANDOFF_SUMMARY.md
+ResQ-OS_Console_UI_Spec.md
+current_versions/
+reference_screenshots/
+screenshots/
+publish/
+.claude/
+.DS_Store
+.env*
+.vercel

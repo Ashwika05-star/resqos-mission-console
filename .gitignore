@@ -8,3 +8,5 @@ screenshots/
 publish/
 .claude/
 .DS_Store
+.vercel
+.env*
