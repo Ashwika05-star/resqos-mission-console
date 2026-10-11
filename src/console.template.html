@@ -1,0 +1,579 @@
+<!doctype html>
+<html lang="en" data-look="stone">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ResQ-OS Mission Console</title>
+<meta name="description" content="ResQ-OS vs. classical schedulers on real search-and-rescue UAV mission task data, simulated in the browser.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* ---------- Tokens (outcome colours validated for colour-vision separation in both themes) ---------- */
+:root{
+  /* "Stone" theme (default): light warm scene on top, dark strip below, as in the reference image */
+  --frame:#8b877e; --scene1:#bdb9af; --scene2:#aaa69c; --nav:#1f1e1b;
+  --card:rgba(86,82,74,.66); --card-line:rgba(255,255,255,.17);
+  --bg:#22211e; --panel:#2c2b27; --panel2:#35342f; --panel3:#46453f; --line:#3a3934;
+  --text:#fbfaf6; --dim:#cfccc3; --faint:#99968d;
+  --lime:#d6ef7a; --lime-ink:#1f2510; --lime-soft:rgba(214,239,122,.16);
+  --base:#c9c5bb; --offload:#2fa595; --local:#c98320; --failed:#e04870;
+  --mtn1:#67665a; --mtn2:#4a4940; --mtn3:#33322c; --mtn4:#22211e; --glow:rgba(214,239,122,.0);
+  --png-bg:#2c2b27;
+  --shadow:0 10px 28px rgba(0,0,0,.22);
+  --display:"Barlow Condensed",system-ui,sans-serif; --body:"Barlow",system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,monospace;
+  --r:16px; --r-sm:10px;
+  color-scheme:dark;
+}
+:root[data-look="dark"]{
+  --frame:#0e0e0c; --scene1:#2a2a26; --scene2:#1e1e1b; --nav:#121210;
+  --card:rgba(255,255,255,.05); --card-line:rgba(255,255,255,.09);
+  --bg:#1a1a17; --panel:#232320; --panel2:#2b2b27; --panel3:#393933; --line:#30302b;
+  --mtn1:#3a3a32; --mtn2:#2d2d27; --mtn3:#23231f; --mtn4:#1a1a17; --png-bg:#232320;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{background:var(--bg);scroll-padding-top:92px}
+body{background:var(--bg);color:var(--text);font-family:var(--body);font-size:15px;line-height:1.45;min-width:0;overflow-x:hidden}
+.shell{min-height:100vh;background:linear-gradient(var(--scene1),var(--scene1)) top/100% 120px no-repeat,var(--bg)}
+/* Sticky top bar: floats over the page while scrolling */
+.topbar{position:sticky;top:env(safe-area-inset-top,0px);z-index:40;padding:12px 16px 0}
+.topbar .nav{margin-bottom:0;box-shadow:0 8px 24px rgba(0,0,0,.28);border:1px solid rgba(255,255,255,.08)}
+/* Top scene: light stone backdrop with a full-width mountain ridge, frosted cards on top */
+.scene{position:relative;background:linear-gradient(180deg,var(--scene1),var(--scene2));padding:16px 16px 18px;isolation:isolate;overflow:hidden}
+.scene>.ridge{position:absolute;left:0;right:0;bottom:0;width:100%;height:60%;z-index:-1;pointer-events:none}
+.scene{--panel2:rgba(22,21,18,.30);--panel3:rgba(255,255,255,.22);--line:rgba(255,255,255,.17);--dim:rgba(255,255,255,.86);--faint:rgba(255,255,255,.66);--png-bg:#77736a}
+.scene .panel{background:var(--card);border-color:var(--card-line);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+.deep{padding:0 16px 16px}
+button,select,input{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--lime);outline-offset:2px;border-radius:6px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.label{font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);font-weight:600}
+.chip{display:inline-block;background:var(--lime);color:var(--lime-ink);font-size:.72rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;padding:3px 10px;border-radius:6px}
+h2.ttl{font-family:var(--display);font-weight:700;font-size:1.3rem;letter-spacing:.05em;text-transform:uppercase;line-height:1.1}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px;min-width:0}
+.panel-h{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+.muted{color:var(--dim)} .faint{color:var(--faint)}
+.small{font-size:.82rem}
+.rq{color:var(--lime);font-weight:600} .bl{color:var(--base);font-weight:600}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--line);background:var(--panel2);border-radius:999px;padding:6px 12px;cursor:pointer;font-size:.8rem;font-weight:500;color:var(--text);white-space:nowrap}
+.btn:hover{border-color:var(--faint)}
+.btn svg{width:14px;height:14px}
+
+/* ---------- Nav ---------- */
+.nav{display:flex;align-items:center;gap:14px;background:var(--nav);border-radius:14px;padding:10px 14px;margin-bottom:16px;flex-wrap:wrap;--panel2:rgba(255,255,255,.07);--line:rgba(255,255,255,.12);--dim:#b9b6ad}
+.brand{display:flex;align-items:center;gap:9px;font-family:var(--display);font-weight:800;font-size:1.3rem;letter-spacing:.06em;text-decoration:none;color:var(--text)}
+.brand svg{width:26px;height:26px}
+.brand b{color:var(--lime)}
+.tabs{display:flex;gap:22px;margin-inline:auto;flex-wrap:wrap}
+.tabs a{color:var(--dim);font-size:.76rem;letter-spacing:.12em;text-transform:uppercase;text-decoration:none;padding:3px 0;border-bottom:2px solid transparent;font-weight:600}
+.tabs a:hover,.tabs a.on{color:var(--text);border-color:var(--lime)}
+.navr{display:flex;align-items:center;gap:8px}
+.status{font-size:.78rem;color:var(--dim);display:flex;align-items:center;gap:7px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--lime);box-shadow:0 0 0 3px var(--lime-soft)}
+
+/* ---------- Top grid ---------- */
+.top{display:grid;gap:14px;grid-template-columns:290px minmax(0,1fr) 330px;grid-template-areas:"ctrl hero side"}
+.ctrl{grid-area:ctrl;display:flex;flex-direction:column;gap:14px;min-width:0}
+.hero{grid-area:hero}
+.side{grid-area:side;display:flex;flex-direction:column;gap:14px;min-width:0}
+@media (max-width:1180px){
+  .top{grid-template-columns:280px minmax(0,1fr);grid-template-areas:"ctrl hero" "side side"}
+  .side{display:grid;grid-template-columns:1fr 1fr}
+}
+@media (max-width:780px){
+  /* Phone: controls, then the result, then facts and charts */
+  .top{display:flex;flex-direction:column}
+  .ctrl{display:contents}
+  .ctrl>.panel:first-child{order:1}
+  .hero{order:2}
+  .ctrl>.panel:last-child{order:3}
+  .side{order:4;display:flex}
+}
+
+/* Controls */
+.loads{display:flex;flex-direction:column;gap:7px;margin:8px 0 16px;border:0}
+.load input{position:absolute;opacity:0;pointer-events:none}
+.load span{display:flex;justify-content:space-between;align-items:center;background:var(--panel2);border:1px solid var(--line);border-radius:var(--r-sm);padding:10px 12px;cursor:pointer;font-weight:500}
+.load small{font-family:var(--mono);font-size:.74rem;color:var(--dim)}
+.load input:checked + span{border-color:var(--lime);background:var(--lime-soft)}
+.load input:checked + span small{color:var(--lime)}
+.load input:focus-visible + span{outline:2px solid var(--lime);outline-offset:2px}
+.selwrap{position:relative;margin:8px 0 14px}
+.selwrap select{appearance:none;width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:var(--r-sm);padding:10px 34px 10px 12px;font-weight:500;cursor:pointer}
+.selwrap::after{content:"";position:absolute;right:14px;top:50%;width:7px;height:7px;border-right:2px solid var(--dim);border-bottom:2px solid var(--dim);transform:translateY(-70%) rotate(45deg);pointer-events:none}
+.run{width:100%;border:0;border-radius:var(--r-sm);background:var(--lime);color:var(--lime-ink);font-weight:700;font-size:.95rem;letter-spacing:.12em;text-transform:uppercase;padding:12px;cursor:pointer;transition:transform .1s}
+.run:active{transform:translateY(1px)}
+.run.stale{box-shadow:0 0 0 3px var(--lime-soft);animation:pulse 1.6s ease-in-out infinite}
+@keyframes pulse{50%{box-shadow:0 0 0 7px transparent}}
+.stalenote{font-size:.78rem;color:var(--dim);margin-top:7px;min-height:1.1em}
+.facts{display:grid;grid-template-columns:1fr 1fr;background:var(--panel2);border-radius:var(--r-sm);overflow:hidden;margin-top:8px}
+.facts div{padding:11px 8px;text-align:center;border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
+.facts div:nth-child(2n){border-right:0}
+.facts div:nth-last-child(-n+2){border-bottom:0}
+.facts b{display:block;font-family:var(--display);font-size:1.55rem;font-weight:700;line-height:1.05}
+.facts span{font-size:.74rem;color:var(--dim)}
+.fnote{font-size:.8rem;color:var(--faint);margin-top:10px;line-height:1.5}
+
+/* ---------- Hero ---------- */
+.hero{position:relative;border-radius:var(--r);display:flex;flex-direction:column;min-height:600px}
+.hero-head{text-align:center;padding:22px 18px 0;position:relative;z-index:2}
+.hero h1{font-family:var(--body);font-weight:500;text-transform:uppercase;font-size:clamp(2rem,4.6vw,3.6rem);line-height:1;letter-spacing:-.01em;margin:14px 0 12px;text-shadow:0 2px 18px rgba(0,0,0,.12)}
+.hero h1 em{font-style:normal}
+.verdict{max-width:600px;margin:0 auto;color:rgba(255,255,255,.9);font-size:.95rem}
+.verdict b{color:var(--text)}
+.stage{position:relative;flex:1;min-height:300px}
+.stage svg.dronesvg{position:absolute;inset:0;width:100%;height:100%}
+.rotor{transform-box:fill-box;transform-origin:center;animation:spin .14s linear infinite;animation-play-state:paused}
+.flying .rotor{animation-play-state:running}
+.hover-bob{animation:bob 4s ease-in-out infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes bob{50%{transform:translateY(-5px)}}
+.hero-ridge{display:none}
+@media (max-width:780px){.scene>.ridge{display:none}.hero-ridge{display:inline}.hero{min-height:0}.stage{border-radius:var(--r);overflow:hidden;margin-bottom:10px}}
+@media (prefers-reduced-motion:reduce){.rotor,.hover-bob{animation:none!important}}
+.pins{position:absolute;inset:auto 0 18px 0;display:grid;grid-template-columns:repeat(3,1fr);z-index:2;padding:0 12px}
+.pin{display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center}
+.pin:nth-child(2){transform:translateY(-34px)}
+.pin .bub{min-width:46px;height:46px;padding:0 8px;border-radius:999px;display:grid;place-items:center;font-family:var(--display);font-weight:700;font-size:1.35rem;color:#fff;box-shadow:0 0 0 5px rgba(0,0,0,.18),0 6px 14px rgba(0,0,0,.3)}
+.pin .pl{font-size:.82rem;font-weight:600;color:var(--text);text-shadow:0 1px 2px rgba(0,0,0,.35)}
+.pin .pb{font-size:.74rem;color:var(--dim);font-family:var(--mono)}
+.pin .pb i{font-style:normal}
+
+/* Playback bar */
+.play{position:relative;z-index:2;background:rgba(24,23,20,.72);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:12px 16px;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px 14px;align-items:center}
+.pbtn{width:42px;height:42px;border-radius:50%;border:0;background:var(--lime);color:var(--lime-ink);display:grid;place-items:center;cursor:pointer}
+.pbtn svg{width:18px;height:18px}
+.scrub{display:flex;flex-direction:column;gap:4px;min-width:0}
+.scrubtop{display:flex;justify-content:space-between;gap:10px;font-size:.78rem;color:var(--dim)}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:22px;background:transparent;cursor:pointer}
+input[type=range]::-webkit-slider-runnable-track{height:6px;border-radius:999px;background:linear-gradient(90deg,var(--lime) var(--p,0%),var(--panel3) var(--p,0%))}
+input[type=range]::-moz-range-track{height:6px;border-radius:999px;background:linear-gradient(90deg,var(--lime) var(--p,0%),var(--panel3) var(--p,0%))}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:var(--text);border:3px solid var(--panel);margin-top:-6px;box-shadow:0 0 0 1px var(--line)}
+input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:var(--text);border:3px solid var(--panel)}
+.seg{display:inline-flex;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:3px;gap:2px}
+.seg button{border:0;background:transparent;border-radius:7px;padding:5px 9px;font-size:.78rem;cursor:pointer;color:var(--dim);font-weight:500}
+.seg button[aria-pressed="true"]{background:var(--panel);color:var(--text);box-shadow:0 0 0 1px var(--line)}
+.meters{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:6px 18px}
+.meter{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;align-items:center;font-size:.78rem}
+.cells{display:flex;gap:2px;height:14px}
+.cells i{flex:1;border-radius:2px;background:var(--panel3)}
+.meter .num{font-size:.76rem;color:var(--dim);white-space:nowrap}
+@media (max-width:560px){
+  .meters{grid-template-columns:1fr}
+  .play{grid-template-columns:auto minmax(0,1fr)}
+  .play .seg{grid-column:1/-1;justify-self:start}
+  .hero{min-height:0}
+  .stage{min-height:280px}
+  .pin .bub{min-width:40px;height:40px;font-size:1.15rem}
+  .pin:nth-child(2){transform:translateY(-20px)}
+}
+
+/* Right column */
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:.8rem;color:var(--dim)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:10px;height:10px;border-radius:3px;display:inline-block}
+.sw.line{height:3px;width:14px;border-radius:2px}
+canvas{display:block;width:100%}
+.gauges{display:grid;grid-template-columns:1fr 1fr;gap:6px;text-align:center}
+.gauge svg{width:100%;max-width:150px;height:auto}
+.gauge .gv{font-family:var(--display);font-weight:700;font-size:1.8rem;margin-top:-34px;line-height:1}
+.gauge .gn{font-size:.74rem;letter-spacing:.1em;text-transform:uppercase;font-weight:600;margin-bottom:4px}
+.gcap{font-size:.82rem;color:var(--dim);text-align:center;margin-top:10px}
+
+/* ---------- Sections ---------- */
+.row{display:grid;gap:14px;margin-top:14px}
+.row3{grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr))}
+.metric{padding:10px 0;border-bottom:1px solid var(--line)}
+.metric:last-child{border-bottom:0}
+.mh{display:flex;justify-content:space-between;gap:8px;margin-bottom:6px}
+.hb{display:grid;grid-template-columns:96px minmax(0,1fr) 84px;gap:10px;align-items:center;font-size:.86rem;margin:3px 0}
+.hb .tr{height:8px;background:var(--panel3);border-radius:999px;overflow:hidden}
+.hb .tr i{display:block;height:100%;border-radius:999px}
+.hb .num{text-align:right;font-size:.84rem}
+.hb .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cap{font-size:.8rem;color:var(--dim);margin-top:6px;line-height:1.45}
+.cap b{color:var(--text);font-weight:600}
+.split{display:flex;gap:2px;height:16px;border-radius:5px;overflow:hidden;margin:6px 0 5px}
+.split i{display:block;height:100%}
+.split i:first-child{border-radius:5px 0 0 5px}.split i:last-child{border-radius:0 5px 5px 0}
+.hatch{background-image:repeating-linear-gradient(135deg,rgba(255,255,255,.35) 0 2px,transparent 2px 6px)}
+.ocounts{font-family:var(--mono);font-size:.78rem;color:var(--dim);display:flex;gap:12px;flex-wrap:wrap}
+.cfg{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:.9rem}
+.cfg:last-child{border-bottom:0}
+.tag{font-family:var(--mono);font-size:.76rem;background:var(--panel2);border:1px solid var(--line);border-radius:7px;padding:3px 8px;white-space:nowrap}
+.wbar{display:flex;align-items:center;gap:8px}
+.wbar .cells{width:90px;height:10px}
+
+/* Task board */
+.boards{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+@media (max-width:860px){.boards{grid-template-columns:1fr}}
+.bd h3{font-size:.95rem;margin-bottom:6px;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.bstats{display:flex;flex-wrap:wrap;gap:6px;font-size:.76rem;color:var(--dim);margin-top:10px}
+.bstats span{background:var(--panel2);border-radius:999px;padding:3px 9px}
+.bstats b{color:var(--text);font-family:var(--mono);font-weight:500}
+.glyph{width:12px;height:12px;vertical-align:-2px}
+
+/* Compare all */
+.tblwrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r-sm)}
+table{border-collapse:collapse;width:100%;min-width:760px;font-size:.86rem}
+th,td{padding:9px 10px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+th{font-size:.7rem;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);font-weight:600;background:var(--panel2)}
+th:first-child,td:first-child{text-align:left}
+tbody tr:last-child td{border-bottom:0}
+tr.me td{background:var(--lime-soft)}
+tr.cur td{background:color-mix(in srgb,var(--base) 12%,transparent)}
+td .ib{display:inline-block;vertical-align:middle;width:60px;height:6px;background:var(--panel3);border-radius:999px;margin-right:8px;overflow:hidden}
+td .ib i{display:block;height:100%}
+td.best{font-weight:700}
+td.best::after{content:" ★";color:var(--lime);font-size:.75em}
+.linkbtn{background:none;border:0;color:var(--text);cursor:pointer;font-weight:600;text-decoration:underline;text-decoration-color:var(--faint);text-underline-offset:3px;padding:0}
+.linkbtn:disabled{text-decoration:none;cursor:default}
+
+/* Timeline */
+.tlctrl{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;margin-bottom:10px}
+.jump{display:flex;flex-wrap:wrap;gap:6px}
+.ovw{position:relative;margin-bottom:8px;touch-action:none;cursor:grab}
+.tlslide{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;font-size:.8rem;color:var(--dim);margin-bottom:10px}
+.tip{position:fixed;z-index:50;pointer-events:none;background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:7px 10px;font-size:.8rem;box-shadow:0 8px 24px rgba(0,0,0,.3);max-width:260px;display:none;line-height:1.4}
+.tip b{font-weight:600}
+
+/* Tidy detail sections */
+.deep .panel{padding:20px}
+.deep .row{gap:16px;margin-top:16px}
+.sub{font-size:.84rem;color:var(--dim);margin-top:4px}
+.vnote{font-size:.8rem;color:rgba(255,255,255,.7);margin-top:6px}
+.pill{display:inline-flex;align-items:center;gap:6px;background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:4px 10px;font-size:.78rem;color:var(--text);white-space:nowrap}
+.pill.sm{padding:1px 7px;font-size:.68rem;color:var(--dim)}
+.note{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px}
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tile{background:var(--panel2);border-radius:12px;padding:12px 14px;min-width:0}
+.tl{display:flex;justify-content:space-between;gap:6px;font-size:.7rem;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);font-weight:600;margin-bottom:8px}
+.tl span:last-child{letter-spacing:0;text-transform:none;font-weight:500;color:var(--faint)}
+.tv{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:baseline;column-gap:8px;margin-top:6px}
+.tv>span:first-child{font-size:.8rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tv b{font-family:var(--display);font-size:1.45rem;font-weight:700;line-height:1.1}
+.tv b small{font-size:.7em;font-weight:600;color:var(--dim);margin-left:2px}
+.tb{grid-column:1/-1;height:4px;background:var(--panel3);border-radius:9px;overflow:hidden;margin-top:3px}
+.tb i{display:block;height:100%;border-radius:9px}
+.oc{margin-bottom:18px}
+.och{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.ocs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px}
+.ocs div{background:var(--panel2);border-radius:10px;padding:8px 10px;display:grid;grid-template-columns:auto 1fr;align-items:center;column-gap:7px}
+.ocs b{font-family:var(--display);font-size:1.35rem;font-weight:700;line-height:1.1}
+.ocs span{grid-column:1/-1;font-size:.74rem;color:var(--dim)}
+.why{margin-top:12px;font-size:.84rem;color:var(--dim)}
+.why summary{cursor:pointer;list-style:none;display:inline-flex;align-items:center;gap:6px;color:var(--text);font-weight:500;font-size:.8rem}
+.why summary::-webkit-details-marker{display:none}
+.why summary::before{content:"";width:16px;height:16px;border-radius:50%;background:var(--panel2);border:1px solid var(--line);display:inline-block;box-sizing:border-box}
+.why summary::after{content:"›";transition:transform .15s;color:var(--dim)}
+.why[open] summary::after{transform:rotate(90deg)}
+.why>div{margin-top:8px;padding:10px 12px;background:var(--panel2);border-radius:10px;line-height:1.5}
+.why b{color:var(--text)}
+.method-wrap>summary{cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
+.method-wrap>summary::-webkit-details-marker{display:none}
+.method-wrap>summary::after{content:"＋";color:var(--dim);margin-left:auto}
+.method-wrap[open]>summary::after{content:"−"}
+.method-wrap[open] .method{margin-top:16px}
+/* Method */
+.method{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:10px 26px;font-size:.88rem;color:var(--dim)}
+.method h4{color:var(--text);font-size:.92rem;margin-bottom:3px}
+.method code{font-family:var(--mono);font-size:.8rem;color:var(--text)}
+footer{font-size:.78rem;color:var(--faint);text-align:center;padding:16px 8px 4px}
+
+/* Copy dialog fallback */
+dialog{margin:auto;border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:var(--r);padding:16px;width:min(720px,calc(100vw - 32px));max-height:calc(100vh - 32px)}
+dialog::backdrop{background:rgba(0,0,0,.55)}
+dialog textarea{width:100%;height:280px;font-family:var(--mono);font-size:.78rem;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:8px}
+dialog img{max-width:100%;border-radius:8px;border:1px solid var(--line)}
+.toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:8px 14px;border-radius:999px;font-size:.85rem;opacity:0;transition:opacity .2s;pointer-events:none;z-index:60}
+.toast.on{opacity:1}
+
+@media (max-width:560px){
+  .topbar{padding:8px 16px 0}
+  .scene{padding:12px 16px 14px}
+  .deep{padding:0 16px 16px}
+  .nav{gap:10px}
+  .tabs{order:3;width:100%;gap:18px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+  .tabs a{white-space:nowrap;font-size:.72rem}
+  .navr{margin-left:auto}
+  .status{display:none}
+  #copyAll .cl{display:none}
+  .panel{padding:14px}
+  .hb{grid-template-columns:78px minmax(0,1fr) 72px}
+  .tile{padding:10px 11px}
+  .tv>span:first-child{font-size:.72rem}
+  .tv b{font-size:1.2rem}
+  .tl{font-size:.64rem}
+}
+</style>
+</head>
+<body>
+<div class="shell">
+<div class="topbar">
+<!-- ============ NAV ============ -->
+<header class="nav">
+  <a class="brand" href="#mission" aria-label="ResQ-OS Mission Console, top">
+    <svg viewBox="0 0 26 26" aria-hidden="true"><path d="M4 17a9 9 0 0 1 18 0" fill="none" stroke="var(--lime)" stroke-width="3" stroke-linecap="round"/><circle cx="13" cy="17" r="3" fill="var(--lime)"/></svg>
+    <span>RESQ<b>-OS</b></span>
+  </a>
+  <nav class="tabs" aria-label="Sections">
+    <a href="#mission" class="on">Mission</a>
+    <a href="#board">Playback</a>
+    <a href="#compare">All baselines</a>
+    <a href="#timeline">Timeline</a>
+    <a href="#method">Method</a>
+  </nav>
+  <div class="navr">
+    <span class="status" aria-live="polite"><span class="dot"></span><span id="navStatus">—</span></span>
+    <button class="btn" id="copyAll" type="button" title="Copy all results as a Markdown table" aria-label="Copy results">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5" y="5" width="9" height="9" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M11 3.5V3a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h.5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg><span class="cl">Copy results</span></button>
+    <button class="btn" id="themeBtn" type="button" aria-label="Switch to light theme">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5a6.5 6.5 0 1 0 0 13z" fill="currentColor"/><circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" stroke-width="1.3"/></svg><span id="themeLbl">Light</span></button>
+  </div>
+</header>
+</div>
+<div class="scene">
+  <svg class="ridge" viewBox="0 0 1440 420" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
+    <!-- decorative mountains (not data) -->
+    <path d="M0 210 L120 150 L210 185 L330 95 L420 150 L520 120 L600 160 L700 70 L790 140 L880 110 L980 165 L1080 90 L1180 150 L1290 115 L1440 170 L1440 420 L0 420Z" fill="var(--mtn1)"/>
+    <path d="M0 260 L140 215 L250 245 L380 190 L500 235 L610 205 L720 245 L830 200 L960 240 L1070 210 L1200 250 L1320 215 L1440 240 L1440 420 L0 420Z" fill="var(--mtn2)"/>
+    <path d="M0 320 L160 285 L300 310 L450 275 L600 305 L760 280 L900 310 L1060 285 L1220 312 L1340 290 L1440 300 L1440 420 L0 420Z" fill="var(--mtn3)"/>
+    <path d="M0 375 L220 355 L460 372 L720 352 L980 370 L1220 355 L1440 368 L1440 420 L0 420Z" fill="var(--mtn4)"/>
+  </svg>
+
+
+<!-- ============ TOP GRID ============ -->
+<section class="top" id="mission" aria-label="Mission setup and result">
+  <div class="ctrl">
+    <div class="panel">
+      <fieldset class="loads" id="loads">
+        <legend class="label">Mission load</legend>
+      </fieldset>
+      <label class="label" for="baseline">Compare against</label>
+      <div class="selwrap"><select id="baseline"></select></div>
+      <button class="run" id="runBtn" type="button">Run mission</button>
+      <div class="stalenote" id="staleNote" aria-live="polite"></div>
+    </div>
+    <div class="panel">
+      <div class="label">Mission facts</div>
+      <div class="facts" id="facts"></div>
+      <p class="fnote" id="factsNote"></p>
+    </div>
+  </div>
+
+  <div class="hero" id="hero">
+    <div class="hero-head">
+      <span class="chip" id="heroChip">—</span>
+      <h1 id="heroTitle">—</h1>
+      <p class="verdict" id="verdict" aria-live="polite"></p>
+      <p class="vnote" id="verdictNote"></p>
+    </div>
+    <div class="stage" id="stage">
+      <svg class="dronesvg" viewBox="0 0 800 420" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
+        <defs>
+          <linearGradient id="beam" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#d6ef7a" stop-opacity=".55"/>
+            <stop offset="1" stop-color="#d6ef7a" stop-opacity="0"/>
+          </linearGradient>
+          <linearGradient id="shellG" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#6a6d64"/><stop offset=".45" stop-color="#3a3c36"/><stop offset="1" stop-color="#1c1d1a"/>
+          </linearGradient>
+          <linearGradient id="armG" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#55584f"/><stop offset="1" stop-color="#1e1f1b"/>
+          </linearGradient>
+          <radialGradient id="discG">
+            <stop offset="0" stop-color="#d9dccf" stop-opacity=".05"/><stop offset=".75" stop-color="#d9dccf" stop-opacity=".16"/><stop offset="1" stop-color="#d9dccf" stop-opacity="0"/>
+          </radialGradient>
+          <radialGradient id="lensG" cx=".4" cy=".35">
+            <stop offset="0" stop-color="#7d8a8a"/><stop offset=".35" stop-color="#1b2326"/><stop offset="1" stop-color="#050707"/>
+          </radialGradient>
+          <filter id="soft"><feGaussianBlur stdDeviation="6"/></filter>
+          <g id="prop">
+            <ellipse rx="62" ry="62" fill="url(#discG)"/>
+            <g class="rotor"><rect x="-60" y="-3.5" width="120" height="7" rx="3.5" fill="#20211d" opacity=".85"/><rect x="-3.5" y="-60" width="7" height="120" rx="3.5" fill="#20211d" opacity=".35"/></g>
+          </g>
+          <g id="motor">
+            <rect x="-11" y="-2" width="22" height="16" rx="3" fill="url(#armG)"/>
+            <ellipse cy="-2" rx="11" ry="4" fill="#4a4d45"/>
+            <ellipse cy="-3" rx="3" ry="1.4" fill="#8d9086"/>
+          </g>
+        </defs>
+        <!-- decorative backdrop: mountains (not data) -->
+        <path class="hero-ridge" d="M0 300 L90 250 L150 268 L230 205 L300 245 L360 215 L430 240 L520 190 L600 232 L680 210 L800 250 L800 420 L0 420Z" fill="var(--mtn1)" opacity=".55"/>
+        <path class="hero-ridge" d="M0 330 L70 300 L160 318 L250 270 L330 300 L410 268 L500 300 L560 282 L650 310 L730 285 L800 300 L800 420 L0 420Z" fill="var(--mtn2)"/>
+        <path class="hero-ridge" d="M0 370 L120 345 L220 360 L320 338 L420 356 L520 340 L640 362 L740 344 L800 352 L800 420 L0 420Z" fill="var(--mtn3)"/>
+        <!-- light cone -->
+        <polygon points="392,196 408,196 520,330 280,330" fill="url(#beam)"/>
+        <ellipse cx="400" cy="332" rx="122" ry="10" fill="#d6ef7a" opacity=".22" filter="url(#soft)"/>
+        <!-- drone, 3/4 view -->
+        <g class="hover-bob">
+          <g transform="translate(400 150)">
+            <ellipse cx="0" cy="118" rx="110" ry="9" fill="#000" opacity=".22" filter="url(#soft)"/>
+            <!-- rear arms + props -->
+            <path d="M-26 -14 L-128 -48 L-124 -40 L-24 -4Z" fill="url(#armG)"/>
+            <path d="M26 -14 L128 -48 L124 -40 L24 -4Z" fill="url(#armG)"/>
+            <use href="#motor" x="-126" y="-52"/><use href="#motor" x="126" y="-52"/>
+            <g transform="translate(-126 -58) scale(1 .22)"><use href="#prop"/></g>
+            <g transform="translate(126 -58) scale(1 .22)"><use href="#prop"/></g>
+            <!-- body -->
+            <path d="M-56 -22 Q-50 -42 -26 -46 L26 -46 Q50 -42 56 -22 L62 14 Q60 30 40 34 L-40 34 Q-60 30 -62 14Z" fill="url(#shellG)"/>
+            <path d="M-38 -38 Q-30 -48 0 -48 Q30 -48 38 -38 L32 -20 L-32 -20Z" fill="#74776d" opacity=".9"/>
+            <path d="M-50 4 L50 4" stroke="#0e0f0d" stroke-width="2" opacity=".7"/>
+            <rect x="-18" y="-14" width="36" height="9" rx="4" fill="#0f100e"/>
+            <circle cx="-44" cy="20" r="3" fill="#d6ef7a"/><circle cx="44" cy="20" r="3" fill="#d6ef7a"/>
+            <!-- front arms + props -->
+            <path d="M-40 6 L-150 40 L-146 50 L-36 20Z" fill="url(#armG)"/>
+            <path d="M40 6 L150 40 L146 50 L36 20Z" fill="url(#armG)"/>
+            <!-- landing legs -->
+            <path d="M-30 32 L-46 86 M30 32 L46 86" stroke="#1a1b18" stroke-width="5" stroke-linecap="round"/>
+            <path d="M-62 88 L-28 84 M28 84 L62 88" stroke="#1a1b18" stroke-width="4" stroke-linecap="round"/>
+            <!-- gimbal + camera -->
+            <rect x="-6" y="32" width="12" height="10" rx="2" fill="#1a1b18"/>
+            <rect x="-22" y="40" width="44" height="30" rx="11" fill="url(#shellG)"/>
+            <circle cx="0" cy="55" r="11" fill="url(#lensG)" stroke="#0c0d0b" stroke-width="2"/>
+            <circle cx="0" cy="68" r="3" fill="#d6ef7a"/>
+            <use href="#motor" x="-148" y="40"/><use href="#motor" x="148" y="40"/>
+            <g transform="translate(-148 34) scale(1 .24)"><use href="#prop"/></g>
+            <g transform="translate(148 34) scale(1 .24)"><use href="#prop"/></g>
+          </g>
+        </g>
+      </svg>
+      <div class="pins" id="pins"></div>
+    </div>
+    <div class="play" id="playback" aria-label="Mission playback">
+      <button class="pbtn" id="playBtn" type="button" aria-label="Play mission replay"></button>
+      <div class="scrub">
+        <div class="scrubtop"><span>Mission clock <b class="num" id="clock" style="color:var(--text)">—</b></span><span class="num" id="clockEnd">—</span></div>
+        <input type="range" id="scrub" min="0" max="1000" step="1" value="1000" aria-label="Mission time">
+      </div>
+      <div class="seg" role="group" aria-label="Replay speed" id="speedSeg"></div>
+      <div class="meters" id="meters"></div>
+    </div>
+  </div>
+
+  <div class="side">
+    <div class="panel">
+      <div class="panel-h">
+        <h2 class="ttl">Battery remaining</h2>
+        <button class="btn" type="button" data-png="batCv" aria-label="Copy battery chart as PNG">PNG</button>
+        <div class="seg" role="group" aria-label="Battery chart time range" id="batSeg" style="width:100%">
+          <button type="button" data-v="all" aria-pressed="true">Whole mission</button>
+          <button type="button" data-v="dl" aria-pressed="false">Until last deadline</button>
+        </div>
+      </div>
+      <canvas id="batCv" role="img" aria-label="Battery remaining over mission time"></canvas>
+      <div class="legend" style="margin-top:8px" id="batLegend"></div>
+      <p class="cap" id="batCap"></p>
+    </div>
+    <div class="panel">
+      <div class="label" style="margin-bottom:10px">Overall on-time completion</div>
+      <div class="gauges" id="gauges"></div>
+      <p class="gcap">Share of <b>all</b> tasks that finished before their deadline.</p>
+    </div>
+  </div>
+</section>
+</div>
+
+<main class="deep">
+<!-- ============ TASK BOARD ============ -->
+<section class="row" id="board" aria-label="Live task board">
+  <div class="panel">
+    <div class="panel-h">
+      <div>
+        <h2 class="ttl">Live task board</h2>
+        <p class="sub">One mark per task, in arrival order. Press play above to watch.</p>
+      </div>
+      <div class="legend" id="boardLegend"></div>
+    </div>
+    <div class="boards">
+      <div class="bd"><h3><span class="rq">ResQ-OS</span><span class="small muted num" id="bdTimeA"></span></h3><canvas id="boardA" role="img"></canvas><div class="bstats" id="bstatsA"></div></div>
+      <div class="bd"><h3><span class="bl" id="bdNameB">Baseline</span><span class="small muted num" id="bdTimeB"></span></h3><canvas id="boardB" role="img"></canvas><div class="bstats" id="bstatsB"></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ STRIP ============ -->
+<section class="row row3" aria-label="Head to head">
+  <div class="panel">
+    <div class="panel-h"><h2 class="ttl">Head to head</h2><div class="legend" id="h2hLegend"></div></div>
+    <div id="h2h"></div>
+  </div>
+  <div class="panel">
+    <div class="panel-h"><h2 class="ttl">Task outcomes</h2></div>
+    <div id="outcomes"></div>
+  </div>
+  <div class="panel">
+    <div class="panel-h"><h2 class="ttl">ResQ-OS settings</h2><span class="tag">fixed in engine</span></div>
+    <div id="settings"></div>
+  </div>
+</section>
+
+<!-- ============ ALL BASELINES ============ -->
+<section class="row" id="compare" aria-label="All baselines">
+  <div class="panel">
+    <div class="panel-h">
+      <div>
+        <h2 class="ttl">All baselines</h2>
+        <p class="sub" id="cmpSub"></p>
+      </div>
+      <button class="btn" type="button" id="copyTbl">Copy table</button>
+    </div>
+    <div class="tblwrap"><table id="cmpTbl"></table></div>
+    <div id="cmpNote"></div>
+  </div>
+</section>
+
+<!-- ============ TIMELINE ============ -->
+<section class="row" id="timeline" aria-label="Execution timeline">
+  <div class="panel">
+    <div class="panel-h">
+      <div>
+        <h2 class="ttl">Task execution timeline</h2>
+        <p class="sub">Drag the highlighted window to explore · hover a bar for details</p>
+      </div>
+      <button class="btn" type="button" data-png="ganttCv" aria-label="Copy timeline as PNG">PNG</button>
+    </div>
+    <div class="tlctrl">
+      <div class="seg" role="group" aria-label="Window size" id="spanSeg"></div>
+      <div class="jump" id="jumps"></div>
+    </div>
+    <canvas id="ovCv" class="ovw" height="54" role="img" aria-label="Whole-mission overview with the visible window highlighted"></canvas>
+    <div class="tlslide"><span>Window start</span><input type="range" id="winStart" min="0" max="100" step="1" value="0" aria-label="Timeline window start (seconds)"><span class="num" id="winLbl"></span></div>
+    <canvas id="ganttCv" role="img"></canvas>
+    <div class="legend" style="margin-top:10px" id="ganttLegend"></div>
+    <div id="ganttNote"></div>
+  </div>
+</section>
+
+<!-- ============ METHOD ============ -->
+<section class="row" id="method" aria-label="Method and definitions">
+  <details class="panel method-wrap">
+    <summary><h2 class="ttl">How to read these numbers</h2><span class="sub">Definitions and method notes</span></summary>
+    <div class="method" id="methodBody"></div>
+  </details>
+</section>
+</main>
+<footer>All numbers are computed in this page by the unmodified ResQ-OS simulation engine from the 3D-UAV-MEC task data. Software simulation only; no hardware or telemetry.</footer>
+</div>
+
+<div class="tip" id="tip" role="tooltip"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<dialog id="copyDlg" aria-labelledby="dlgT">
+  <div class="panel-h"><h2 class="ttl" id="dlgT">Copy</h2><button class="btn" type="button" id="dlgClose">Close</button></div>
+  <p class="small muted" id="dlgMsg" style="margin-bottom:8px"></p>
+  <div id="dlgBody"></div>
+</dialog>
+
+<script type="application/json" id="task-data">/*__DATA__*/</script>
+<!-- ENGINE START: verbatim copy of scheduler_engine.js (checked by tests/regression.test.js) -->
+<script>
+/*__ENGINE__*/
+</script>
+<!-- ENGINE END -->
+<script>
+/*__APP__*/
+</script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+# Private working notes and old drafts (kept locally, not published)
+BRIEF.md
+HANDOFF_SUMMARY.md
+ResQ-OS_Console_UI_Spec.md
+current_versions/
+reference_screenshots/
+screenshots/
+publish/
+.claude/
+.DS_Store
