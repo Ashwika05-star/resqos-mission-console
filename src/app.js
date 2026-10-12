@@ -351,6 +351,7 @@ function renderMethod() {
     <div><h4>Battery curve</h4>Rebuilt from the engine's output: each task's energy (offload or local) is subtracted at the moment the engine decided how to run it.</div>
     <div><h4>Why ResQ-OS runs long</h4>When offloading would eat into the energy needed to finish everything locally, ResQ-OS runs tasks on-board instead. Local is ~5× slower, so the queue stretches past the last deadline.</div>
     <div><h4>SRT and Round Robin bars</h4>These preempt or time-slice local tasks. The engine records first admission and finish only, so their timeline bars span that whole interval and overlap; they are stacked in lanes.</div>
+    <div><h4>Moving scenery</h4>The landscape is generated terrain that the camera flies into as the replay clock runs. It is decoration only and carries no data.</div>
     <div><h4>Data</h4>3D-UAV-MEC task set. Light / Medium / Heavy = ${SCENARIOS.map(s => RAW[s.key].length).join(' / ')} tasks. Utilization is the engine's constant for each scenario (total offload time ÷ mission span).</div>`;
 }
 
@@ -527,7 +528,7 @@ function play() {
   cancelAnimationFrame(raf); raf = requestAnimationFrame(tick);
 }
 function stop() {
-  S.playing = false; cancelAnimationFrame(raf); $('hero').classList.remove('flying'); updatePlayBtn();
+  S.playing = false; cancelAnimationFrame(raf); $('hero').classList.remove('flying'); updatePlayBtn(); if (S.A) drawScenery();
 }
 function tick(ts) {
   if (!S.playing) return;
@@ -564,7 +565,135 @@ function drawLive() {
     $('mtr' + k).textContent = `${kJ(v)} · ${f1(100 * p)}%`;
   });
   updatePlayBtn();
-  drawBoard('A'); drawBoard('B'); drawBattery(); drawGantt();
+  drawBoard('A'); drawBoard('B'); drawBattery(); drawGantt(); drawScenery();
+}
+
+
+/* ---------------- moving scenery (decoration only, carries no data) ----------------
+ * A small "voxel space" terrain flyover (the technique used by early flight games).
+ * The terrain is generated once from a fixed seed, so it looks the same every time.
+ * How far the camera has flown forward = mission clock × a constant, so play, pause and
+ * scrubbing all move the landscape consistently. Nothing here is read from the task data. */
+const reduceMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+const CELLS_PER_MISSION_SECOND = 0.2;
+const MAP = 512, MASK = MAP - 1;
+let terrain = null; // { h: heights 0..1, r, g, b: base colours }
+
+function ihash(x, y, seed) { // integer hash → 0..1
+  let h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263) ^ Math.imul(seed, 2246822519);
+  h = Math.imul(h ^ (h >>> 13), 1274126177); h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
+}
+function vnoise(x, y, period, seed) { // tileable value noise
+  const ix = Math.floor(x), iy = Math.floor(y), fx = x - ix, fy = y - iy;
+  const u = fx * fx * (3 - 2 * fx), v = fy * fy * (3 - 2 * fy);
+  const x0 = ((ix % period) + period) % period, y0 = ((iy % period) + period) % period;
+  const x1 = (x0 + 1) % period, y1 = (y0 + 1) % period;
+  const a = ihash(x0, y0, seed), b = ihash(x1, y0, seed), c = ihash(x0, y1, seed), d = ihash(x1, y1, seed);
+  return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+}
+function buildTerrain() {
+  const h = new Float32Array(MAP * MAP);
+  let lo = Infinity, hi = -Infinity;
+  for (let y = 0; y < MAP; y++) for (let x = 0; x < MAP; x++) {
+    let sum = 0, amp = 1, norm = 0, ridged = 0;
+    for (let o = 0, cell = 128; o < 5; o++, cell /= 2) {
+      const n = vnoise(x / cell, y / cell, MAP / cell, 7 + o);
+      sum += n * amp; ridged += (1 - Math.abs(n * 2 - 1)) * amp; norm += amp; amp *= 0.45;
+    }
+    h[y * MAP + x] = Math.pow(sum / norm, 1.8) * 0.7 + Math.pow(ridged / norm, 2.5) * 0.3;
+  }
+  // two passes of a 3×3 blur: rounder hills, no needle-like spikes
+  for (let pass = 0; pass < 2; pass++) {
+    const src = h.slice();
+    for (let y = 0; y < MAP; y++) for (let x = 0; x < MAP; x++) {
+      let t = 0;
+      for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) t += src[((y + j) & MASK) * MAP + ((x + i) & MASK)];
+      h[y * MAP + x] = t / 9;
+    }
+  }
+  for (let i = 0; i < h.length; i++) { if (h[i] < lo) lo = h[i]; if (h[i] > hi) hi = h[i]; }
+  for (let i = 0; i < h.length; i++) h[i] = (h[i] - lo) / (hi - lo);
+  const r = new Uint8Array(MAP * MAP), g = new Uint8Array(MAP * MAP), b = new Uint8Array(MAP * MAP);
+  const H = (x, y) => h[(y & MASK) * MAP + (x & MASK)];
+  const mix = (c1, c2, t) => c1.map((v, i) => v + (c2[i] - v) * t);
+  const WATER = [70, 92, 100], GRASS = [96, 110, 58], FOREST = [46, 62, 36], SCRUB = [108, 100, 72], ROCK = [104, 98, 88], SNOW = [240, 240, 236];
+  for (let y = 0; y < MAP; y++) for (let x = 0; x < MAP; x++) {
+    const v = H(x, y), sx = H(x + 1, y) - H(x - 1, y), sy = H(x, y + 1) - H(x, y - 1), slope = Math.hypot(sx, sy) * 40;
+    const grain = ihash(x, y, 99) * 0.06 - 0.03, patch = vnoise(x / 8, y / 8, MAP / 8, 50);
+    let c;
+    if (v < 0.13) c = WATER;
+    else if (v < 0.38) c = mix(GRASS, FOREST, Math.min(1, patch * 1.4));
+    else if (v < 0.6) c = mix(FOREST, SCRUB, (v - 0.38) / 0.22);
+    else if (v < 0.84) c = mix(SCRUB, ROCK, (v - 0.6) / 0.24);
+    else c = mix(ROCK, SNOW, Math.min(1, (v - 0.84) / 0.08));
+    if (v >= 0.13 && slope > 0.8) c = mix(c, ROCK, Math.min(0.5, (slope - 0.8) * 0.5)); // steep faces show rock
+    const light = v < 0.13 ? 1 : Math.max(0.72, Math.min(1.2, 1 + (sx * 0.8 + sy * 0.5) * -9)) + grain;
+    const i = y * MAP + x;
+    r[i] = Math.min(255, c[0] * light); g[i] = Math.min(255, c[1] * light); b[i] = Math.min(255, c[2] * light);
+  }
+  terrain = { h, r, g, b };
+}
+function rgbOf(cssColor) { // "#rrggbb" or "rgb(...)" → [r,g,b]
+  const m = cssColor.match(/^#([0-9a-f]{6})$/i);
+  if (m) return [0, 2, 4].map(i => parseInt(m[1].slice(i, i + 2), 16));
+  const n = cssColor.match(/\d+(\.\d+)?/g) || [0, 0, 0]; return n.slice(0, 3).map(Number);
+}
+function camAt(travel) { // camera path: forward along -y, gentle S-curves in x
+  return { x: 256 + Math.sin(travel / 260) * 90, y: -travel, heading: Math.cos(travel / 260) * 0.35 };
+}
+function terrainAt(x, y) { return terrain.h[((Math.floor(y) & MASK) * MAP) + (Math.floor(x) & MASK)]; }
+function drawSceneryOn(cv) {
+  if (!cv || !cv.offsetParent) return; // hidden at this screen size
+  if (!terrain) buildTerrain();
+  const cw = Math.max(10, cv.clientWidth), ch = Math.max(10, cv.clientHeight);
+  const W = Math.min(640, Math.round(cw / 2)), Hh = Math.max(40, Math.round(W * ch / cw)); // low-res render, scaled up softly
+  if (cv.width !== W || cv.height !== Hh) { cv.width = W; cv.height = Hh; }
+  const ctx = cv.getContext('2d'); cssEl = cv;
+  const fog = rgbOf(css('--haze')), base = rgbOf(css('--mtn4')), k = parseFloat(css('--terrain-k')) || 1;
+  const travel = reduceMotion || !S.A ? 0 : S.T * CELLS_PER_MISSION_SECOND;
+  const cam = camAt(travel), sinA = Math.sin(cam.heading), cosA = Math.cos(cam.heading);
+  const ground = Math.max(terrainAt(cam.x, cam.y), terrainAt(cam.x - sinA * 40, cam.y - cosA * 40));
+  const HS = 105, camH = ground * HS + 62, horizon = Hh * 0.34, scale = Hh * 0.62, FAR = 560;
+  const img = ctx.createImageData(W, Hh), px = new Uint32Array(img.data.buffer), ybuf = new Float32Array(W).fill(Hh);
+  const { h, r, g, b } = terrain;
+  for (let z = 3, dz = 0.4; z < FAR; z += dz, dz *= 1.011) {
+    let plx = -cosA * z - sinA * z, ply = sinA * z - cosA * z;
+    const prx = cosA * z - sinA * z, pry = -sinA * z - cosA * z;
+    const dx = (prx - plx) / W, dy = (pry - ply) / W;
+    plx += cam.x; ply += cam.y;
+    const f = Math.min(1, Math.pow(z / FAR, 1.75)); // distance haze: clear up close, misty far away
+    const inv = scale / z;
+    for (let i = 0; i < W; i++, plx += dx, ply += dy) {
+      const idx = ((Math.floor(ply) & MASK) * MAP) + (Math.floor(plx) & MASK);
+      let sy = (camH - h[idx] * HS) * inv + horizon;
+      if (sy < ybuf[i]) {
+        if (sy < 0) sy = 0;
+        const R = (r[idx] * k) * (1 - f) + fog[0] * f, G = (g[idx] * k) * (1 - f) + fog[1] * f, B = (b[idx] * k) * (1 - f) + fog[2] * f;
+        const col = 0xff000000 | (B << 16) | (G << 8) | R;
+        for (let y = sy | 0, e = ybuf[i] | 0; y < e; y++) px[y * W + i] = col;
+        ybuf[i] = sy;
+      }
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  // fade the nearest ground into the dark strip below the scene
+  const grd = ctx.createLinearGradient(0, Hh * 0.72, 0, Hh);
+  grd.addColorStop(0, `rgba(${base[0]},${base[1]},${base[2]},0)`); grd.addColorStop(1, `rgb(${base[0]},${base[1]},${base[2]})`);
+  ctx.fillStyle = grd; ctx.fillRect(0, Hh * 0.72, W, Hh * 0.28);
+}
+function drawScenery() {
+  drawSceneryOn($('ridgeCv')); drawSceneryOn($('heroRidgeCv'));
+  // the drone banks into the camera path's turns and drifts slightly; the beam follows it
+  const travel = reduceMotion || !S.A ? 0 : S.T * CELLS_PER_MISSION_SECOND;
+  const live = S.playing && !reduceMotion;
+  const turn = Math.cos(travel / 260); // matches camAt()'s S-curve
+  const dx = live ? turn * 10 : 0, roll = live ? -turn * 5 : 0, pitch = live ? 0.97 : 1;
+  const g = $('droneSway');
+  g.style.transformOrigin = '400px 150px';
+  g.style.transform = `translate(${dx.toFixed(1)}px,0) rotate(${roll.toFixed(2)}deg) scale(1,${pitch})`;
+  $('beamPoly').setAttribute('points', `${392 + dx},196 ${408 + dx},196 ${520 + dx * 2.2},330 ${280 + dx * 2.2},330`);
+  $('beamGlow').setAttribute('cx', 400 + dx * 2.2);
 }
 
 /* ---------------- timeline (Gantt) ---------------- */

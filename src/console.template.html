@@ -18,7 +18,7 @@
   --text:#fbfaf6; --dim:#cfccc3; --faint:#99968d;
   --lime:#d6ef7a; --lime-ink:#1f2510; --lime-soft:rgba(214,239,122,.16);
   --base:#c9c5bb; --offload:#2fa595; --local:#c98320; --failed:#e04870;
-  --mtn1:#67665a; --mtn2:#4a4940; --mtn3:#33322c; --mtn4:#22211e; --glow:rgba(214,239,122,.0);
+  --mtn1:#67665a; --mtn2:#4a4940; --mtn3:#33322c; --mtn4:#22211e; --cloud:rgba(255,255,255,.32); --haze:#aaa69c; --terrain-k:1; --glow:rgba(214,239,122,.0);
   --png-bg:#2c2b27;
   --shadow:0 10px 28px rgba(0,0,0,.22);
   --display:"Barlow Condensed",system-ui,sans-serif; --body:"Barlow",system-ui,sans-serif;
@@ -30,7 +30,7 @@
   --frame:#0e0e0c; --scene1:#2a2a26; --scene2:#1e1e1b; --nav:#121210;
   --card:rgba(255,255,255,.05); --card-line:rgba(255,255,255,.09);
   --bg:#1a1a17; --panel:#232320; --panel2:#2b2b27; --panel3:#393933; --line:#30302b;
-  --mtn1:#3a3a32; --mtn2:#2d2d27; --mtn3:#23231f; --mtn4:#1a1a17; --png-bg:#232320;
+  --mtn1:#3a3a32; --mtn2:#2d2d27; --mtn3:#23231f; --mtn4:#1a1a17; --cloud:rgba(255,255,255,.05); --haze:#1e1e1b; --terrain-k:.42; --png-bg:#232320;
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html{background:var(--bg);scroll-padding-top:92px}
@@ -41,7 +41,10 @@ body{background:var(--bg);color:var(--text);font-family:var(--body);font-size:15
 .topbar .nav{margin-bottom:0;box-shadow:0 8px 24px rgba(0,0,0,.28);border:1px solid rgba(255,255,255,.08)}
 /* Top scene: light stone backdrop with a full-width mountain ridge, frosted cards on top */
 .scene{position:relative;background:linear-gradient(180deg,var(--scene1),var(--scene2));padding:16px 16px 18px;isolation:isolate;overflow:hidden}
-.scene>.ridge{position:absolute;left:0;right:0;bottom:0;width:100%;height:60%;z-index:-1;pointer-events:none}
+.scene>.ridge{position:absolute;left:0;right:0;bottom:0;width:100%;height:64%;z-index:-1;pointer-events:none;image-rendering:auto}
+.stage>.hero-ridge{position:absolute;left:0;right:0;bottom:0;width:100%;height:58%;pointer-events:none}
+.stage svg.dronesvg{z-index:1}
+#droneSway{transform-box:view-box;transition:transform .5s ease-out}
 .scene{--panel2:rgba(22,21,18,.30);--panel3:rgba(255,255,255,.22);--line:rgba(255,255,255,.17);--dim:rgba(255,255,255,.86);--faint:rgba(255,255,255,.66);--png-bg:#77736a}
 .scene .panel{background:var(--card);border-color:var(--card-line);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
 .deep{padding:0 16px 16px}
@@ -131,7 +134,7 @@ h2.ttl{font-family:var(--display);font-weight:700;font-size:1.3rem;letter-spacin
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes bob{50%{transform:translateY(-5px)}}
 .hero-ridge{display:none}
-@media (max-width:780px){.scene>.ridge{display:none}.hero-ridge{display:inline}.hero{min-height:0}.stage{border-radius:var(--r);overflow:hidden;margin-bottom:10px}}
+@media (max-width:780px){.scene>.ridge{display:none}.stage>.hero-ridge{display:block}.hero{min-height:0}.stage{border-radius:var(--r);overflow:hidden;margin-bottom:10px}}
 @media (prefers-reduced-motion:reduce){.rotor,.hover-bob{animation:none!important}}
 .pins{position:absolute;inset:auto 0 18px 0;display:grid;grid-template-columns:repeat(3,1fr);z-index:2;padding:0 12px}
 .pin{display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center}
@@ -335,13 +338,8 @@ dialog img{max-width:100%;border-radius:8px;border:1px solid var(--line)}
 </header>
 </div>
 <div class="scene">
-  <svg class="ridge" viewBox="0 0 1440 420" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
-    <!-- decorative mountains (not data) -->
-    <path d="M0 210 L120 150 L210 185 L330 95 L420 150 L520 120 L600 160 L700 70 L790 140 L880 110 L980 165 L1080 90 L1180 150 L1290 115 L1440 170 L1440 420 L0 420Z" fill="var(--mtn1)"/>
-    <path d="M0 260 L140 215 L250 245 L380 190 L500 235 L610 205 L720 245 L830 200 L960 240 L1070 210 L1200 250 L1320 215 L1440 240 L1440 420 L0 420Z" fill="var(--mtn2)"/>
-    <path d="M0 320 L160 285 L300 310 L450 275 L600 305 L760 280 L900 310 L1060 285 L1220 312 L1340 290 L1440 300 L1440 420 L0 420Z" fill="var(--mtn3)"/>
-    <path d="M0 375 L220 355 L460 372 L720 352 L980 370 L1220 355 L1440 368 L1440 420 L0 420Z" fill="var(--mtn4)"/>
-  </svg>
+  <!-- Decorative moving scenery (not data); drawn by drawScenery() in app.js -->
+  <canvas class="ridge" id="ridgeCv" aria-hidden="true"></canvas>
 
 
 <!-- ============ TOP GRID ============ -->
@@ -371,6 +369,7 @@ dialog img{max-width:100%;border-radius:8px;border:1px solid var(--line)}
       <p class="vnote" id="verdictNote"></p>
     </div>
     <div class="stage" id="stage">
+      <canvas class="hero-ridge" id="heroRidgeCv" aria-hidden="true"></canvas>
       <svg class="dronesvg" viewBox="0 0 800 420" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
         <defs>
           <linearGradient id="beam" x1="0" y1="0" x2="0" y2="1">
@@ -400,14 +399,11 @@ dialog img{max-width:100%;border-radius:8px;border:1px solid var(--line)}
             <ellipse cy="-3" rx="3" ry="1.4" fill="#8d9086"/>
           </g>
         </defs>
-        <!-- decorative backdrop: mountains (not data) -->
-        <path class="hero-ridge" d="M0 300 L90 250 L150 268 L230 205 L300 245 L360 215 L430 240 L520 190 L600 232 L680 210 L800 250 L800 420 L0 420Z" fill="var(--mtn1)" opacity=".55"/>
-        <path class="hero-ridge" d="M0 330 L70 300 L160 318 L250 270 L330 300 L410 268 L500 300 L560 282 L650 310 L730 285 L800 300 L800 420 L0 420Z" fill="var(--mtn2)"/>
-        <path class="hero-ridge" d="M0 370 L120 345 L220 360 L320 338 L420 356 L520 340 L640 362 L740 344 L800 352 L800 420 L0 420Z" fill="var(--mtn3)"/>
         <!-- light cone -->
-        <polygon points="392,196 408,196 520,330 280,330" fill="url(#beam)"/>
-        <ellipse cx="400" cy="332" rx="122" ry="10" fill="#d6ef7a" opacity=".22" filter="url(#soft)"/>
+        <polygon id="beamPoly" points="392,196 408,196 520,330 280,330" fill="url(#beam)"/>
+        <ellipse id="beamGlow" cx="400" cy="332" rx="122" ry="10" fill="#d6ef7a" opacity=".22" filter="url(#soft)"/>
         <!-- drone, 3/4 view -->
+        <g id="droneSway">
         <g class="hover-bob">
           <g transform="translate(400 150)">
             <ellipse cx="0" cy="118" rx="110" ry="9" fill="#000" opacity=".22" filter="url(#soft)"/>
@@ -438,6 +434,7 @@ dialog img{max-width:100%;border-radius:8px;border:1px solid var(--line)}
             <g transform="translate(-148 34) scale(1 .24)"><use href="#prop"/></g>
             <g transform="translate(148 34) scale(1 .24)"><use href="#prop"/></g>
           </g>
+        </g>
         </g>
       </svg>
       <div class="pins" id="pins"></div>
